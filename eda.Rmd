@@ -1,0 +1,277 @@
+---
+title: "EDA"
+author: "Scott Silverstein"
+date: "2024-02-09"
+output:
+  html_document:
+    toc: true 
+    toc_depth: 2
+    toc_float: yes
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+``` 
+# Intro 
+
+1. Business Problem
+
+•	Description: This business problem that is being addressed is how to credit check and qualify a candidate for a loan with minimal or no credit history. Currently, there is no mechanism for people who haven’t had the time or opportunity to build credit with the use of credit card. However, Home Credit is trying to find a way for these underrepresented lost population of members of the economy to be counted, while also protecting themselves from too risky loans.
+
+•	Impact Analysis: The impact of this analysis is very large. Finding good candidates can not only help the company but the customers as well. As far as the company is concerned, it will allow them to stay afloat without having to risk defaults. Defaults would be a curse because there would be no way for the company to recoup their investments.  On the customer side, they have confirmation that their loaned money will be in good hands. They know that the company is going to stay financially solvent so they do not have to deal with higher interest rates and sub-standard creditors. 
+
+# Data Information 
+
+```{r} 
+library(tidyverse)
+library(skimr)
+
+application_test <- read.csv("application_test.csv")
+application_train <- read.csv("application_train.csv")
+
+skim(application_train)
+```
+
+## Handling Missing data 
+
+#### Amount Required Credit Buereau with time distinction 
+
+I want to combine some similar sections of the data to see if there are a grouped way of handling the missing data. 
+
+```{R} 
+# combining all columns then save to a data frame 
+amt_req <- application_train %>%
+  select(AMT_REQ_CREDIT_BUREAU_DAY, AMT_REQ_CREDIT_BUREAU_HOUR, AMT_REQ_CREDIT_BUREAU_MON, 
+         AMT_REQ_CREDIT_BUREAU_QRT, AMT_REQ_CREDIT_BUREAU_WEEK, AMT_REQ_CREDIT_BUREAU_YEAR) %>%
+  head(15)
+
+# list unique values
+list_unique_values <- list(
+  AMT_REQ_CREDIT_BUREAU_DAY = unique(application_train$AMT_REQ_CREDIT_BUREAU_DAY),
+  AMT_REQ_CREDIT_BUREAU_HOUR = unique(application_train$AMT_REQ_CREDIT_BUREAU_HOUR),
+  AMT_REQ_CREDIT_BUREAU_MON = unique(application_train$AMT_REQ_CREDIT_BUREAU_MON),
+  AMT_REQ_CREDIT_BUREAU_QRT = unique(application_train$AMT_REQ_CREDIT_BUREAU_QRT),
+  AMT_REQ_CREDIT_BUREAU_WEEK = unique(application_train$AMT_REQ_CREDIT_BUREAU_WEEK),
+  AMT_REQ_CREDIT_BUREAU_YEAR = unique(application_train$AMT_REQ_CREDIT_BUREAU_YEAR)
+)
+
+list_unique_values
+
+
+```
+
+This column is described as the "Number of inquiries to the Credit Bureau about the client one {timeframe} before the application." Given the significant number of NA values, alongside the valuable information contained within the non-NA values, it's crucial to carefully consider how to handle this data. The presence of NA values raises questions, yet the data without NAs remains informative. It seems that the NAs might not be inherently informative, and straightforward imputation using the median or mean might not necessarily be the right answer. 
+
+Several theories could explain the occurrence of NAs:
+
+  - Lack of Permission or Access: The applicant may not have authorized the       lender to make these inquiries, or the lender might not have initiated an       inquiry during that period.
+  
+  -Data Collection Issues: Problems in the data collection or reporting process   could lead to missing values.
+  
+  -Applicability: This type of credit inquiry might not have been applicable or   required for some applicants, resulting in fields being left blank or marked    as NaN.
+  
+  -Technical Errors: Issues in data processing, transfer, or storage could        result in missing values.
+
+Observing the data reveals 41,519 NAs across these columns, suggesting a substantial amount of missing information. However, the uniformity in the number of NAs across different columns suggests it might not be coincidental, indicating it could be the same individuals who either did not respond or were unable to respond. This pattern hints at potential issues with permission or applicability, where inquiries were possibly made selectively based on specific criteria. Given the considerable number of responses and the apparent non-randomness of the NAs, it may be prudent to exclude these missing values from certain analyses. Imputing these missing values could introduce bias, especially if the NAs result from systematic differences in the applicability of inquiries or permission granted by the applicants.
+
+
+## Impact of Imputation 
+
+#### Descriptive Stat Columns 
+
+There is a difference in the descriptive stat colums, such as the ones that include median, mode, and average. With these stats, there doesnt seem to be a connection in terms of numbers of NA's like the previous category. For these they will take more thought to what to do than to remove them from the dataset. 
+
+
+Lets chart them and see what happens. 
+
+-AVG: 
+
+```{r} 
+# Select collumns 
+avg <- application_train %>%
+  select(APARTMENTS_AVG, BASEMENTAREA_AVG, YEARS_BEGINEXPLUATATION_AVG,
+         YEARS_BUILD_AVG, COMMONAREA_AVG, ELEVATORS_AVG, ENTRANCES_AVG,
+         FLOORSMAX_AVG, FLOORSMIN_AVG, LANDAREA_AVG)
+
+# Reshape for faceting
+data_long <- pivot_longer(avg, 
+                          cols = everything(), 
+                          names_to = "Variable", 
+                          values_to = "Value")
+
+# Plot the distributions 
+p <- ggplot(data_long, aes(x = Value)) +
+  geom_histogram(bins = 30, na.rm = TRUE) +
+  facet_wrap(~ Variable, scales = "free_x") +
+  theme_minimal() +
+  labs(x = "Value", y = "Count") +
+  ggtitle("Distribution of Average Variables")
+
+# Print the plot
+print(p)
+```
+Seems like most of these distributions have a skew. With the skew, might make sense to impute a median because mean would be sensitive to the larger values. I think because there is no clear understanding of why these are NA's it makes sense to impute rather than blindly remove them from the dataset. 
+
+-Median: 
+
+```{r} 
+# Select columns 
+medi <- application_train %>%
+  select(APARTMENTS_MEDI, BASEMENTAREA_MEDI, YEARS_BEGINEXPLUATATION_MEDI,
+         YEARS_BUILD_MEDI, COMMONAREA_MEDI, ELEVATORS_MEDI, ENTRANCES_MEDI,
+         FLOORSMAX_MEDI, FLOORSMIN_MEDI, LANDAREA_MEDI,
+         LIVINGAPARTMENTS_MEDI, LIVINGAREA_MEDI, NONLIVINGAPARTMENTS_MEDI,
+         NONLIVINGAREA_MEDI)
+
+# Reshape for faceting
+data_long_medi <- pivot_longer(medi, 
+                          cols = everything(), 
+                          names_to = "Variable", 
+                          values_to = "Value")
+
+# Plot distributions 
+p_medi <- ggplot(data_long_medi, aes(x = Value)) +
+  geom_histogram(bins = 30, na.rm = TRUE) +
+  facet_wrap(~ Variable, scales = "free_x", ncol = 3) + 
+  theme_minimal() +
+  labs(x = "Value", y = "Count") +
+  ggtitle("Distribution of Median Variables")
+
+# Print the plot
+print(p_medi)
+
+```
+
+
+Same thing with the medians minus maybe years_build_medi. 
+
+-Mode 
+
+```{r} 
+character_columns <- names(application_train)[sapply(application_train, is.character)]
+print(character_columns)
+
+head(application_train$WALLSMATERIAL_MODE)
+
+```
+
+```{r}
+
+# Select columns 
+mode <- application_train %>%
+  select(APARTMENTS_MODE, BASEMENTAREA_MODE, YEARS_BEGINEXPLUATATION_MODE,
+         YEARS_BUILD_MODE, COMMONAREA_MODE, ELEVATORS_MODE, ENTRANCES_MODE,
+         FLOORSMAX_MODE, FLOORSMIN_MODE, LANDAREA_MODE,
+         LIVINGAPARTMENTS_MODE, LIVINGAREA_MODE, NONLIVINGAPARTMENTS_MODE,
+         NONLIVINGAREA_MODE, TOTALAREA_MODE)
+
+# Reshape for faceting
+data_long_mode <- pivot_longer(mode, 
+                          cols = everything(), 
+                          names_to = "Variable", 
+                          values_to = "Value")
+
+# Plot the distributions 
+p_mode <- ggplot(data_long_mode, aes(x = Value)) +
+  geom_histogram(bins = 30, na.rm = TRUE) +
+  facet_wrap(~ Variable, scales = "free_x", ncol = 3) + 
+  theme_minimal() +
+  labs(x = "Value", y = "Count") +
+  ggtitle("Distribution of Mode Variables")
+
+# Print the plot
+print(p_mode)
+
+```
+
+So minus the columns that have character variables which I believe I am not going to use, these are once again the same concept. I am thinking median over mean for imputation. 
+
+# Data Questions 
+
+## Target Variable Information 
+
+1) Let's take a look at the Target variable and see the distribution 
+
+First, lets graph it. 
+
+```{R} 
+
+# give percentages
+percentage_data <- application_train %>%
+  count(TARGET) %>% #count of occurances 
+  mutate(Percentage = n / sum(n) * 100) # percentage
+
+# bar chart
+percentage_data %>%
+  ggplot(aes(x = as.factor(TARGET), y = Percentage, fill = as.factor(TARGET))) +
+  geom_bar(stat = "identity") +
+  labs(x = "Target", y = "Percentage", fill = "Target") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  geom_text(aes(label = sprintf("%.2f%%", Percentage)), vjust = -0.5, size = 3.5) +
+  theme_minimal() +
+  theme(legend.position = "none") 
+
+
+
+
+```
+
+1 are people with payment issues including late payments for x amount of days. 0 means all other cases. This shows that the majority of people actually applying have pretty good financial backing. This is an imbalance in the target variable, which is good for the customers, but not maybe perfect for the model. The imbalance suggests that any predictive models built to predict this target will need to be carefully calibrated to handle this imbalance. Otherwise, the model might be biased towards predicting the majority class. We might need to oversample the minority 1 class and undersample the majority 0 variable to make up for it. This is not all bad though, the clear differentiation between the two classes suggests that the target variable is well-defined and likely to be a reliable label for modeling purposes.
+
+
+
+## Demographic Analysis:
+
+Are there demographic factors (age, gender, income level, etc.) that are associated with a higher risk of default?
+
+
+### Age 
+
+```{r}
+# age days to years convert
+application_train$AGE_YEARS <- -application_train$DAYS_BIRTH / 365
+
+# Plot age vs target
+ggplot(application_train, aes(x = AGE_YEARS, fill = as.factor(TARGET))) +
+  geom_histogram(bins = 50, position = 'identity', alpha = 0.5) +
+  labs(x = "Age (years)", y = "Count", fill = "Target") +
+  ggtitle("Age Distribution by Target") +
+  theme_minimal()
+
+```
+The histogram indicates that the majority of loan applicants are in their late 20s to early 40s. There is a noticeable decline in the number of applicants as age increases, particularly beyond 50 years. The overlay of the two histograms shows that defaults (Target 1) occur across all ages but are more concentrated in the younger age brackets. The peak for defaults appears to be among the younger applicants, with the proportion of defaults gradually decreasing as age increases.
+
+### Income Level 
+
+```{r} 
+# plot the income level against the target 
+ggplot(application_train, aes(x = AMT_INCOME_TOTAL, fill = as.factor(TARGET))) +
+  geom_histogram(bins = 50, position = 'identity', alpha = 0.5) +
+  labs(x = "Total Income", y = "Count", fill = "Target") +
+  ggtitle("Income Distribution by Target") +
+  theme_minimal()
+```
+
+This is really being affected by large outliers. There is a grouping that is making this chart unreadable and tells us nothing. For the sake of visualization and getting a deeper understanding, lets try to do it with a logarithmic scale. 
+
+```{r}
+
+ggplot(application_train, aes(x = log1p(AMT_INCOME_TOTAL), fill = as.factor(TARGET))) +
+  geom_histogram(position = 'identity', alpha = 0.5, bins = 100) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "Log(Total Income)", y = "Count", fill = "Target") +
+  ggtitle("Income Distribution by Target (Log Scale)") +
+  theme_minimal()
+
+
+```
+
+
+This looks much easier to read. Clearly, there is a rightward skew hinting that the majority of the applicants with higher risk are on the lower end of the economic spectrum. This would conceptually make sense as wealthier people probably would have at least enough line of credit to go through a standard loaning agency and certainly have the money to pay back their loans. 
+
+
+# Conclusion 
+
+Throughout this exploratory data analysis, we should be able to create a decent model for candidates with lower credit histories. The investigation revealed key insights, particularly in demographic factors such as age and income, and their relationship with loan repayment difficulties. There is a clearly observed higher risk of default among younger applicants and identified income as a critical factor, with lower-income applicants more likely to default. These findings align with the business objective of Home Credit to empower financially underrepresented individuals while mitigating loan default risks. The pronounced class imbalance in the target variable has highlighted the necessity for advanced modeling techniques to ensure fair and accurate predictions. Moving forward, I recommend employing strategies like re-sampling or model re-weighting to address the imbalance issue. Additionally, further analysis could incorporate external economic factors to refine the predictions and support Home Credit in achieving financial inclusion without compromising on the integrity of the loan process.
+
